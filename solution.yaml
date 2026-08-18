@@ -1,0 +1,13 @@
+apiVersion: solution.sap/v1
+kind: Solution
+
+metadata:
+  name: abap-clean-core-7d7c2
+  version: 1.0.0
+  description: >
+    ABAP Clean Core Agent - AI-powered compliance analyzer that classifies custom
+    ABAP code against SAP Clean Core Levels A-D, delivers extensibility verdicts,
+    and provides selectable remediation guidance for S/4HANA migration teams.
+
+assets:
+  - ref: ./assets/abap-clean-core-agent/asset.yaml
