@@ -29,6 +29,10 @@ grep -c "^@agent_model\|^@agent_config\|^@prompt_section" assets/abap-clean-core
 ls assets/abap-clean-core-agent/test_report.json
 ```
 
+## Developer Setup
+
+The Claude Code skills under `.claude/skills/` are **not committed** — they are per-developer and initialized via the SAP Joule Studio `jl` CLI. A new contributor should install `jl` and run its skill-init command to populate `.claude/skills/` locally. Pinned CLI version: `jl v0.1.20-alpha.8`. Per-developer settings (`.claude/settings.local.json`) are covered by the global gitignore. See `specification/guidelines-agent.md` → "Skill Usage Policy" for how these skills relate to our canonical MTA deployment path.
+
 ## Architecture
 
 The agent runs as an A2A Starlette HTTP server (port 5000) with these layers:

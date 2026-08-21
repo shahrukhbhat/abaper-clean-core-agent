@@ -70,3 +70,6 @@ resources/
 #Plans (ignore all except the tracked cf-aicore deployment plan)
 specification/plans/*
 !specification/plans/cf-aicore-deployment-plan.md
+
+# Claude Code skills (per-developer, initialized via jl CLI — see CLAUDE.md)
+.claude/skills/
