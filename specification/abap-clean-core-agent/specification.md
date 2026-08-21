@@ -5,7 +5,7 @@
 ## Basic Setup
 
 - [ ] Read the project input (`product-requirements-document.md` and `intent.md`)
-- [ ] Bootstrap agent code in `assets/abap-clean-core-agent/` using skill `sap-agent-bootstrap` (invoke from inside `assets/abap-clean-core-agent/`, use copy commands — do NOT create files manually)
+- [ ] Bootstrap agent code in `assets/abap-clean-core-agent/` using skill `sap-agent-bootstrap` (invoke from inside `assets/abap-clean-core-agent/`, use copy commands — do NOT create files manually). **Post-bootstrap override (see guidelines-agent.md → Skill Usage Policy):** the skill scaffolds a Joule-runtime agent — after scaffolding, replace any MCP/auth token wiring with our decoupled Destination / JWT-bearer model (see the MCP Server Integration section), and treat `requirements.txt` as a real deliverable (not "installed in-cluster only").
 - [ ] Install dependencies, validate the agent starts and responds at `/.well-known/agent.json`
 
 ## Runtime Skills
@@ -16,9 +16,9 @@
 - [ ] Place the Clean Core classification rules reference as a companion asset: `app/skills/clean-core-classification/references/clean-core-rules.md` — covering Level A (standard SAP, no modification), Level B (Released APIs / ABAP Cloud only), Level C (mixed released and non-released), Level D (internal APIs, direct DB access, forbidden modifications), with forbidden construct patterns: `SELECT` on SAP internal tables, `CALL FUNCTION` to non-released FMs, `WRITE TO` system fields, direct writes to `MANDT`-keyed tables without using Released APIs.
 - [ ] Place RICEFW decision reference as companion asset: `app/skills/extensibility-guidance/references/ricefw-patterns.md` — categorising Reports, Interfaces, Conversions, Enhancements, Forms, Workflows, and their typical extensibility verdicts with rationale.
 
-## MCP Server Integration (ai-abaper-mcp — External, Service-to-Service)
+## MCP Server Integration (ai-abaper-mcp — External, Decoupled User-Identity Propagation)
 
-> The ai-abaper-mcp MCP server is an external server accessed via service-to-service XSUAA client credentials. It is NOT created by this project — only wired as a dependency.
+> The ai-abaper-mcp MCP server is an external server. It is NOT created by this project — only wired as a dependency. Authentication uses **decoupled user-identity propagation**, not a shared service identity: the agent proves *who the user is* (by forwarding their JWT) and the MCP's own XSUAA resolves what that user is allowed to do. The agent has **zero knowledge of MCP scopes** and no design-time dependency on the MCP's `xs-security.json`. See `specification/plans/cf-aicore-deployment-plan.md` §"#1 RESOLVED" for the full rationale and responsibility matrix.
 
 - [ ] In `assets/abap-clean-core-agent/asset.yaml`, add the `ai-abaper-mcp` MCP server dependency under `requires`:
   ```yaml
@@ -27,16 +27,18 @@
       kind: mcp-server
       ordId: ai-abaper-mcp
   ```
-- [ ] Create `assets/abap-clean-core-agent/app/mcp_auth.py` — XSUAA token manager for service-to-service authentication:
-  - Reads env vars: `XSUAA_URL`, `XSUAA_CLIENT_ID`, `XSUAA_CLIENT_SECRET`, `XSUAA_XSAPPNAME` (runtime-qualified, e.g. `ai-abaper-mcp!t<nnn>`)
-  - Acquires token via POST to `<XSUAA_URL>/oauth/token` with `grant_type=client_credentials`, `client_id`, `client_secret`, and `scope=<XSUAA_XSAPPNAME>.read <XSUAA_XSAPPNAME>.readcontent`
-  - Caches token in memory with expiry timestamp; proactively refreshes when token has less than 60 s remaining
-  - Returns `Authorization: Bearer <token>` header dict for MCP requests
-  - On HTTP 401 from MCP server: re-acquires token once and retries; raises `AuthenticationError` on second failure without exposing credential details
-  - The runtime-qualified xsappname with `!t<nnn>` tenant suffix is REQUIRED — bare design-time name will not work
-- [ ] Ensure `mcp_tools.py` (bootstrap-generated) passes the Bearer token header when making MCP requests via the agent gateway — inject `mcp_auth.get_auth_headers()` into the MCP client setup
+- [ ] Create `assets/abap-clean-core-agent/app/mcp_auth.py` — user-token exchange manager (deliberately simple; **no XSUAA client-credentials logic, no scope requests**):
+  - Reads the **end-user's JWT** from the request-scoped context var set by `JWTContextMiddleware` (in `main.py`) — the agent is a dumb identity pipe, it does not mint its own token
+  - Calls the bound BTP **Destination service** REST API to perform the token exchange transparently: `GET /destination-configuration/v1/destinations/ai-abaper-mcp` with header `X-user-token: <user_jwt>`. Read the `destination` service credentials from `VCAP_SERVICES` (via `cfenv`); the destination `ai-abaper-mcp` is configured with `Authentication: OAuth2UserTokenExchange` so it swaps the user JWT for an MCP-scoped token carrying only the scopes that user has been granted (`read`, `readcontent`, or both) via role collections on the MCP side
+  - Extracts `authTokens[0].value` from the response and returns `Authorization: Bearer <exchanged_token>` header dict for MCP requests
+  - Caches the exchanged token **per user** (keyed by the `sub` claim) with TTL from the token's `expires_in`; proactively evicts when < 60 s remain
+  - On HTTP **401** (no/invalid user token) the agent request itself is rejected upstream (see next item) — `mcp_auth.py` never falls back to a service identity
+  - On HTTP **403** from the MCP (scope insufficient for a tool): raise a typed `InsufficientScopeError`. The agent MUST NOT retry with elevated credentials; the agent graph catches this and emits a user-facing message (e.g. _"You do not have permission to read source content (`readcontent` scope). Contact your administrator to request access."_) and continues with whatever data the user's scopes allow (e.g. metadata via `read` without source)
+  - **No runtime-qualified xsappname, no `XSUAA_CLIENT_ID`/`XSUAA_CLIENT_SECRET`** — these belonged to the superseded client-credentials design and MUST NOT be reintroduced
+- [ ] Enforce inbound user-token requirement: if no user JWT is present on the inbound A2A request, return **HTTP 401** — without a user identity the exchange cannot determine authorisation. Agent-to-agent calls must forward a user token or be rejected. `JWTContextMiddleware` (already in `main.py`) extracts the inbound bearer token; add the reject-on-missing check.
+- [ ] Ensure `mcp_tools.py` (bootstrap-generated) injects `mcp_auth.get_auth_headers()` (the exchanged Bearer token) when making MCP requests via the agent gateway
 - [ ] Set required MCP request headers in the client: `Content-Type: application/json` and `Accept: application/json, text/event-stream` (the Accept header is required by Streamable HTTP — server returns 406 without it)
-- [ ] Generate `mcp-mock.json` using the `mcp-mock-config` skill to mock ai-abaper-mcp tools (`read`, `readcontent`) for local testing
+- [ ] Generate `mcp-mock.json` using the `mcp-mock-config` skill to mock ai-abaper-mcp tools (`read`, `readcontent`) for local testing. Tests must NOT require a live Destination service — mock `mcp_auth` token exchange so tests run offline.
 
 ## Core Agent Implementation
 
@@ -187,7 +189,7 @@
 
 - [ ] Verify no MCP write tools are exposed or invoked — agent must reject any user attempt to modify ABAP objects ("I can only read ABAP code — I cannot write to the ABAP system")
 - [ ] Implement confidence threshold check: if `ClassificationHint.confidence < 0.7`, mark object with `review_recommended=True` in all output views and reports
-- [ ] Implement authentication retry guard in `mcp_auth.py`: max 1 retry on 401; on second failure raise `AuthenticationError("MCP server authentication failed. Please verify service key configuration.")` without logging credential values
+- [ ] Implement auth guards in `mcp_auth.py` per the decoupled model: **no user JWT on inbound request → HTTP 401** (reject; never fall back to a service identity). MCP returns **403** (scope insufficient) → raise `InsufficientScopeError`, do NOT retry with elevated credentials, surface a user-facing message naming the missing scope (`read`/`readcontent`) and continue with the data the user's scopes allow. Never log the user JWT or exchanged token values.
 
 ## Delete Template Skill
 
@@ -202,7 +204,7 @@
 - [ ] Write unit test `tests/test_remediation_generator.py` — tests: principle mode returns doc link, api mode returns replacement API name, code mode returns snippet with disclaimer, Levels A/B return no remediation; mock LLM for api and code modes; run immediately after writing
 - [ ] Write unit test `tests/test_report_writer.py` — tests: JSON file written with correct schema, Markdown file written, file names include scope ID and timestamp; run immediately after writing
 - [ ] Write unit test `tests/test_output_views.py` — tests: developer view table contains all objects, architect view groups by extensibility path, governance view shows correct level distribution percentages; run immediately after writing
-- [ ] Write unit test `tests/test_mcp_auth.py` — tests: token acquired successfully, token cached and reused before expiry, proactive refresh when < 60 s remaining, 401 triggers single retry, second 401 raises AuthenticationError without credential details; mock HTTP calls; run immediately after writing
+- [ ] Write unit test `tests/test_mcp_auth.py` — tests: exchanged token acquired from a mocked Destination service response, token cached and reused per-user (keyed by `sub`) before expiry, proactive eviction when < 60 s remaining, missing user JWT → HTTP 401 / reject (no service-identity fallback), MCP 403 → `InsufficientScopeError` with a user-facing message and no credential/token values logged; mock the Destination service HTTP calls; run immediately after writing
 - [ ] Write one integration test `tests/test_integration.py` — end-to-end: submit a mock package scope, verify all 6 milestones fire, verify JSON and Markdown reports are written, verify LLM is mocked; run immediately after writing
 - [ ] Run `pytest` from `assets/abap-clean-core-agent/` (no args) — if coverage < 70%, add tests until threshold met
 - [ ] Verify `assets/abap-clean-core-agent/app/agent.py` has exactly 4 decorated functions — run `grep -c "^@agent_model\|^@agent_config\|^@prompt_section" assets/abap-clean-core-agent/app/agent.py` and confirm it returns 4; remove extra decorators if more than 4
@@ -213,3 +215,54 @@
 
 - [ ] Invoke `sap-aeval-framework` skill from `assets/abap-clean-core-agent/` to generate `tools.json`
 - [ ] Invoke `sap-aeval-generate-testcase` skill passing `specification/abap-clean-core-agent/specification.md` and `tools.json` — review generated test cases and replace placeholder values with realistic ABAP object names and package identifiers before running evaluations
+
+## Deployment (Cloud Foundry + AI Core / Gen AI Hub — CANONICAL)
+
+> This is the **canonical** deployment path: a self-managed Cloud Foundry MTA deploying the agent alongside its `aicore`, `xsuaa`, and `destination` bindings, with the LLM served by SAP Generative AI Hub. The Joule Studio / Marketplace path (`solution.yaml` + `asset.yaml`) is retained as a **legacy/parallel** path — when the two diverge, this MTA path wins. Full rationale, architecture diagram, and responsibility matrix live in `specification/plans/cf-aicore-deployment-plan.md`.
+
+### Runtime dependencies & buildpack artifacts
+
+- [ ] Create `assets/abap-clean-core-agent/requirements.txt` pinning all Python dependencies. Must include (verified against `main.py` imports): `starlette`, `uvicorn`, `click`, `httpx`, `a2a-sdk`, `langgraph` (with `create_agent` — see constraint below), OpenTelemetry packages including `opentelemetry-instrumentation-starlette`, `cfenv` (to read `VCAP_SERVICES` for the Destination binding), and the SAP Cloud SDK providing `sap_cloud_sdk.aicore` + `sap_cloud_sdk.core.telemetry` + `generative-ai-hub-sdk`.
+  - **Private index caveat**: `sap_cloud_sdk.*` packages are NOT on public PyPI. Document whether they ship inside `generative-ai-hub-sdk` or require `PIP_EXTRA_INDEX_URL` pointed at an SAP-internal mirror; if the latter, configure it via buildpack env or `.pip.conf`.
+  - **`create_agent` import**: per `guidelines-agent.md`, use `from langchain.agents import create_agent` and NEVER `create_react_agent`. If the pinned LangChain/LangGraph release does not export `create_agent`, resolve the correct import (`StateGraph` from `langgraph`) and pin the matching package version — do not leave a non-existent import.
+- [ ] Create `assets/abap-clean-core-agent/Procfile` with the CF start command: `web: python app/main.py`. (`runtime.txt` only sets the Python version — it does NOT define the entrypoint; the `Procfile` is what launches the process.)
+- [ ] Create `assets/abap-clean-core-agent/runtime.txt` pinning the Python version (3.13). The app already honours the CF-injected `PORT` (`main.py`) — no code change needed.
+
+### Deploy skeleton (unblock the pipeline before full agent logic)
+
+- [ ] **Deploy-skeleton milestone**: `main.py` currently imports `agent_executor` and `mcp_tools` symbols (`reset_user_token`, `set_user_token`) that do not yet exist — the app will `ModuleNotFoundError` on startup and CF health probes will never pass. Stub `agent_executor.py` and `mcp_tools.py` with minimal no-op implementations so the app starts and serves `/.well-known/agent.json` (200). This validates the full MTA pipeline (build, deploy, bindings, Destination lookup, network paths) independently of the real agent implementation.
+
+### Agent XSUAA identity (minimal — no MCP scope references)
+
+- [ ] Author `assets/abap-clean-core-agent/xs-security.json` for the agent's OWN `xsuaa` instance (agent identity; A2A callers authenticate here). It is **deliberately minimal** — it declares only the agent's own inbound scope and role template. It MUST have **NO `foreign-scope-references` and NO reference to `ai-abaper-mcp` scopes** — MCP authorization is resolved entirely on the MCP side via role-collection assignments (see the MCP Server Integration section). Shape:
+  ```json
+  {
+    "xsappname": "abap-clean-core-agent",
+    "tenant-mode": "dedicated",
+    "scopes": [ { "name": "$XSAPPNAME.invoke", "description": "Invoke the agent" } ],
+    "role-templates": [ { "name": "AgentUser", "scope-references": ["$XSAPPNAME.invoke"] } ]
+  }
+  ```
+
+### MCP connectivity via Destination service
+
+- [ ] Configure a BTP **Destination** named `ai-abaper-mcp` (via BTP cockpit or `mta.yaml` resource params): `Type=HTTP`, `URL=<mcp CF route>`, `ProxyType=Internet`, `Authentication=OAuth2UserTokenExchange`, `TokenServiceURL=<ai-abaper-mcp-xsuaa URL>/oauth/token`, `ClientId`/`ClientSecret` from the `ai-abaper-mcp-xsuaa` `token-exchange-key` service key. This is the credential the agent (or any consuming agent) uses — see `mcp_auth.py` items in the MCP Server Integration section.
+- [ ] **Verify MCP XSUAA grant type** (15-min spike, unblocks the whole path): `cf service-key ai-abaper-mcp-xsuaa <key>` and confirm `grant_types` includes `urn:ietf:params:oauth:grant-type:jwt-bearer`. If missing, add `"oauth2-configuration": { "grant-types": ["urn:ietf:params:oauth:grant-type:jwt-bearer"] }` to the MCP's `xs-security.json` and run `cf update-service ai-abaper-mcp-xsuaa -c xs-security.json`.
+- [ ] **Verify trust**: the agent's XSUAA and the MCP's XSUAA must be in the same trust domain (same subaccount, or both trusting the same IAS tenant). If not, establish cross-subaccount trust in the BTP cockpit.
+- [ ] **Role collections (MCP-side, done by MCP owner / subaccount admin — no agent config change)**: `ABAPer MCP - Standard` (role template `MCPToolUser` → `read`) and `ABAPer MCP - Data` (role template `MCPDataReader` → `read` + `readcontent`). Assign users/groups accordingly.
+
+### `mta.yaml` (deployment source of truth)
+
+- [ ] Author `assets/abap-clean-core-agent/mta.yaml` (or at project root, per build layout):
+  - **module** `abap-clean-core-agent` (python buildpack) → requires `aicore`, `agent-xsuaa`, `agent-destination`; provides its route as `AGENT_PUBLIC_URL` (used in `AgentCard`). **Pin `instances: 1`** — `main.py` uses `InMemoryTaskStore()`, so task state is not shared across instances; document that a persistent store (Redis / HANA) is required before scaling horizontally.
+  - **module** `ai-abaper-mcp` (if co-deploying) → requires `ai-abaper-mcp-xsuaa`; provides the route consumed by the Destination config.
+  - **resources**: `aicore` (service `aicore`, plan `standard`), `agent-xsuaa` (service `xsuaa`, `xs-security.json`), `agent-destination` (service `destination`, plan `lite`), `ai-abaper-mcp-xsuaa` (service `xsuaa`) — referenced by the Destination config, not directly bound to the agent module.
+- [ ] Set the Gen AI Hub target model for the agent (env like `AICORE_LLM_DEPLOYMENT` or the `agent.py` model config). `set_aicore_config()` (called in `main.py`) reads the bound `aicore` credentials from `VCAP_SERVICES` — no app code change, the binding is the deliverable. The AI Core region / resource-group MUST match the subaccount the CF space belongs to, or the `aicore` binding won't resolve the Gen AI Hub deployment.
+- [ ] **OpenTelemetry exporter target**: specify where `auto_instrument()` exports traces/spans. If it auto-discovers an OTLP endpoint from a bound Cloud Logging instance, declare that binding in `mta.yaml`; otherwise document that only `stdout` milestone log lines (M1–M6) are available, not distributed traces.
+
+### Build, deploy & validate (runbook)
+
+- [ ] **Prerequisites**: subaccount entitlements for `aicore` (standard), `xsuaa` (application), `destination` (lite), and CF runtime quota for 2 apps; AI Core provisioned with a Gen AI Hub GPT-4o (or equivalent) deployment (capture its `deploymentId`/model name); `ai-abaper-mcp` + `ai-abaper-mcp-xsuaa` deployable to the same space; tools `cf` CLI (logged into target org/space) and `mbt` (Cloud MTA Build Tool).
+- [ ] `mbt build` → produces the `.mtar` archive.
+- [ ] `cf deploy <archive>.mtar` → creates/binds `aicore` + both `xsuaa` instances + the `destination`, and pushes both apps in order. **Use `mbt build` + `cf deploy` for this canonical path — do NOT use the `deploy-solution` / `joule-studio-cli` (`jl`) skills here (they target Joule runtime; see guidelines-agent.md → Skill Usage Policy).**
+- [ ] Validate: `cf apps` shows both `started`; `GET https://<agent-route>/.well-known/agent.json` → 200 (matches all `asset.yaml` health probes). Trigger a scope analysis → check logs for `M1.achieved … M6.achieved`. Confirm an `api`/`code`-depth remediation returns (proves AI Core binding) and object retrieval succeeds (proves the Destination/JWT-bearer MCP auth path).
