@@ -15,6 +15,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from agent_executor import AgentExecutor
 from mcp_tools import reset_user_token, set_user_token
@@ -26,9 +27,26 @@ logger = logging.getLogger(__name__)
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "5000"))
 
+# Unauthenticated paths: agent-card discovery and health probes are hit by the
+# platform without a user JWT and must NOT be rejected. Everything else (the
+# A2A message/task RPC endpoints) requires an inbound Bearer token.
+_PUBLIC_PATH_PREFIXES = ("/.well-known/",)
+_PUBLIC_PATHS = {"/health", "/healthz", "/ready", "/readyz"}
+
+
+def _is_public_path(path: str) -> bool:
+    if path in _PUBLIC_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in _PUBLIC_PATH_PREFIXES)
+
 
 class JWTContextMiddleware(BaseHTTPMiddleware):
-    """Middleware that extracts JWT token from Authorization header and sets it in context."""
+    """Extract the user JWT from the Authorization header into request context.
+
+    Requests to non-public paths without a Bearer token are rejected with HTTP
+    401 — the agent is a pure identity pipe and must never fall back to a
+    service identity for MCP access (see mcp_auth.py).
+    """
 
     async def dispatch(self, request, call_next):
         # Extract JWT token from Authorization header
@@ -36,6 +54,15 @@ class JWTContextMiddleware(BaseHTTPMiddleware):
         token = None
         if auth_header.lower().startswith("bearer "):
             token = auth_header[7:]  # Remove "Bearer " prefix
+
+        # Reject unauthenticated calls to protected endpoints. Discovery/health
+        # paths remain open so platform probes succeed.
+        if token is None and not _is_public_path(request.url.path):
+            return JSONResponse(
+                {"error": "missing_user_token",
+                 "detail": "A user Bearer token is required to access this agent."},
+                status_code=401,
+            )
 
         # Set the token in the context variable, capturing the reset token
         token_ctx = set_user_token(token)

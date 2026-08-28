@@ -4,9 +4,9 @@
 
 ## Basic Setup
 
-- [ ] Read the project input (`product-requirements-document.md` and `intent.md`)
-- [ ] Bootstrap agent code in `assets/abap-clean-core-agent/` using skill `sap-agent-bootstrap` (invoke from inside `assets/abap-clean-core-agent/`, use copy commands — do NOT create files manually). **Post-bootstrap override (see guidelines-agent.md → Skill Usage Policy):** the skill scaffolds a Joule-runtime agent — after scaffolding, replace any MCP/auth token wiring with our decoupled Destination / JWT-bearer model (see the MCP Server Integration section), and treat `requirements.txt` as a real deliverable (not "installed in-cluster only").
-- [ ] Install dependencies, validate the agent starts and responds at `/.well-known/agent.json`
+- [x] Read the project input (`product-requirements-document.md` and `intent.md`)
+- [x] Bootstrap agent code in `assets/abap-clean-core-agent/` using skill `sap-agent-bootstrap` (invoke from inside `assets/abap-clean-core-agent/`, use copy commands — do NOT create files manually). **Post-bootstrap override (see guidelines-agent.md → Skill Usage Policy):** the skill scaffolds a Joule-runtime agent — after scaffolding, replace any MCP/auth token wiring with our decoupled Destination / JWT-bearer model (see the MCP Server Integration section), and treat `requirements.txt` as a real deliverable (not "installed in-cluster only").
+- [x] Install dependencies, validate the agent starts and responds at `/.well-known/agent.json`
 
 ## Runtime Skills
 
@@ -20,14 +20,14 @@
 
 > The ai-abaper-mcp MCP server is an external server. It is NOT created by this project — only wired as a dependency. Authentication uses **decoupled user-identity propagation**, not a shared service identity: the agent proves *who the user is* (by forwarding their JWT) and the MCP's own XSUAA resolves what that user is allowed to do. The agent has **zero knowledge of MCP scopes** and no design-time dependency on the MCP's `xs-security.json`. See `specification/plans/cf-aicore-deployment-plan.md` §"#1 RESOLVED" for the full rationale and responsibility matrix.
 
-- [ ] In `assets/abap-clean-core-agent/asset.yaml`, add the `ai-abaper-mcp` MCP server dependency under `requires`:
+- [x] In `assets/abap-clean-core-agent/asset.yaml`, add the `ai-abaper-mcp` MCP server dependency under `requires`:
   ```yaml
   requires:
     - name: ai-abaper-mcp
       kind: mcp-server
       ordId: ai-abaper-mcp
   ```
-- [ ] Create `assets/abap-clean-core-agent/app/mcp_auth.py` — user-token exchange manager (deliberately simple; **no XSUAA client-credentials logic, no scope requests**):
+- [x] Create `assets/abap-clean-core-agent/app/mcp_auth.py` — user-token exchange manager (deliberately simple; **no XSUAA client-credentials logic, no scope requests**):
   - Reads the **end-user's JWT** from the request-scoped context var set by `JWTContextMiddleware` (in `main.py`) — the agent is a dumb identity pipe, it does not mint its own token
   - Calls the bound BTP **Destination service** REST API to perform the token exchange transparently: `GET /destination-configuration/v1/destinations/ai-abaper-mcp` with header `X-user-token: <user_jwt>`. Read the `destination` service credentials from `VCAP_SERVICES` (via `cfenv`); the destination `ai-abaper-mcp` is configured with `Authentication: OAuth2UserTokenExchange` so it swaps the user JWT for an MCP-scoped token carrying only the scopes that user has been granted (`read`, `readcontent`, or both) via role collections on the MCP side
   - Extracts `authTokens[0].value` from the response and returns `Authorization: Bearer <exchanged_token>` header dict for MCP requests
@@ -35,10 +35,10 @@
   - On HTTP **401** (no/invalid user token) the agent request itself is rejected upstream (see next item) — `mcp_auth.py` never falls back to a service identity
   - On HTTP **403** from the MCP (scope insufficient for a tool): raise a typed `InsufficientScopeError`. The agent MUST NOT retry with elevated credentials; the agent graph catches this and emits a user-facing message (e.g. _"You do not have permission to read source content (`readcontent` scope). Contact your administrator to request access."_) and continues with whatever data the user's scopes allow (e.g. metadata via `read` without source)
   - **No runtime-qualified xsappname, no `XSUAA_CLIENT_ID`/`XSUAA_CLIENT_SECRET`** — these belonged to the superseded client-credentials design and MUST NOT be reintroduced
-- [ ] Enforce inbound user-token requirement: if no user JWT is present on the inbound A2A request, return **HTTP 401** — without a user identity the exchange cannot determine authorisation. Agent-to-agent calls must forward a user token or be rejected. `JWTContextMiddleware` (already in `main.py`) extracts the inbound bearer token; add the reject-on-missing check.
-- [ ] Ensure `mcp_tools.py` (bootstrap-generated) injects `mcp_auth.get_auth_headers()` (the exchanged Bearer token) when making MCP requests via the agent gateway
-- [ ] Set required MCP request headers in the client: `Content-Type: application/json` and `Accept: application/json, text/event-stream` (the Accept header is required by Streamable HTTP — server returns 406 without it)
-- [ ] Generate `mcp-mock.json` using the `mcp-mock-config` skill to mock ai-abaper-mcp tools (`read`, `readcontent`) for local testing. Tests must NOT require a live Destination service — mock `mcp_auth` token exchange so tests run offline.
+- [x] Enforce inbound user-token requirement: if no user JWT is present on the inbound A2A request, return **HTTP 401** — without a user identity the exchange cannot determine authorisation. Agent-to-agent calls must forward a user token or be rejected. `JWTContextMiddleware` (already in `main.py`) extracts the inbound bearer token; add the reject-on-missing check.
+- [x] Ensure `mcp_tools.py` (bootstrap-generated) injects `mcp_auth.get_auth_headers()` (the exchanged Bearer token) when making MCP requests via the agent gateway
+- [x] Set required MCP request headers in the client: `Content-Type: application/json` and `Accept: application/json, text/event-stream` (the Accept header is required by Streamable HTTP — server returns 406 without it)
+- [x] Generate `mcp-mock.json` using the `mcp-mock-config` skill to mock ai-abaper-mcp tools (`read`, `readcontent`) for local testing. Tests must NOT require a live Destination service — mock `mcp_auth` token exchange so tests run offline.
 
 ## Core Agent Implementation
 

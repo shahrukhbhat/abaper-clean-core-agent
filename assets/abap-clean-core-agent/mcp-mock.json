@@ -1,0 +1,62 @@
+{
+  "servers": {
+    "ai-abaper-mcp": {
+      "tools": {
+        "read": {
+          "description": "Read ABAP object metadata for a package, transport request, or explicit object list. Returns object headers (name, type, package, responsible) without source code.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "description": "Package name (e.g. ZMY_PACKAGE), transport request (e.g. DEVK00123456), or comma-separated object list."
+              }
+            },
+            "required": ["scope"]
+          },
+          "mock_response": {
+            "objects": [
+              {
+                "name": "ZCL_ORDER_ENRICH",
+                "type": "CLAS",
+                "package": "ZMY_PACKAGE",
+                "responsible": "DEVUSER",
+                "retrieval_status": "ok"
+              },
+              {
+                "name": "ZMY_PACKAGE_ENHANCEMENT",
+                "type": "ENHO",
+                "package": "ZMY_PACKAGE",
+                "responsible": "DEVUSER",
+                "retrieval_status": "ok"
+              }
+            ]
+          }
+        },
+        "readcontent": {
+          "description": "Read the full ABAP source code of a single object identified by name and type. Returns the source lines as text.",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "ABAP object name (e.g. ZCL_ORDER_ENRICH)."
+              },
+              "type": {
+                "type": "string",
+                "description": "ABAP object type (e.g. CLAS, PROG, FUGR, ENHO)."
+              }
+            },
+            "required": ["name", "type"]
+          },
+          "mock_response": {
+            "name": "ZCL_ORDER_ENRICH",
+            "type": "CLAS",
+            "source": "CLASS zcl_order_enrich DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION.\n    METHODS enrich IMPORTING iv_order TYPE vbeln.\nENDCLASS.\n\nCLASS zcl_order_enrich IMPLEMENTATION.\n  METHOD enrich.\n    SELECT SINGLE * FROM vbak INTO @DATA(ls_order) WHERE vbeln = @iv_order.\n  ENDMETHOD.\nENDCLASS.",
+            "retrieval_status": "ok"
+          }
+        }
+      }
+    }
+  }
+}

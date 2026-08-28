@@ -6,9 +6,9 @@ Check off items as completed.
 
 ## Solution Setup
 
-- [ ] Create asset directory: `mkdir -p assets/abap-clean-core-agent/`
-- [ ] Invoke `setup-solution` skill to create `solution.yaml` and `asset.yaml` files for the `abap-clean-core-agent` asset
-- [ ] Validate `assets/abap-clean-core-agent/asset.yaml` and `solution.yaml` exist and are well-formed
+- [x] Create asset directory: `mkdir -p assets/abap-clean-core-agent/`
+- [x] Invoke `setup-solution` skill to create `solution.yaml` and `asset.yaml` files for the `abap-clean-core-agent` asset
+- [x] Validate `assets/abap-clean-core-agent/asset.yaml` and `solution.yaml` exist and are well-formed
 
 ## Asset Implementation
 
