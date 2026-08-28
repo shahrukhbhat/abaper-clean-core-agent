@@ -187,13 +187,13 @@
 
 ## Guardrails Implementation
 
-- [ ] Verify no MCP write tools are exposed or invoked — agent must reject any user attempt to modify ABAP objects ("I can only read ABAP code — I cannot write to the ABAP system")
-- [ ] Implement confidence threshold check: if `ClassificationHint.confidence < 0.7`, mark object with `review_recommended=True` in all output views and reports
-- [ ] Implement auth guards in `mcp_auth.py` per the decoupled model: **no user JWT on inbound request → HTTP 401** (reject; never fall back to a service identity). MCP returns **403** (scope insufficient) → raise `InsufficientScopeError`, do NOT retry with elevated credentials, surface a user-facing message naming the missing scope (`read`/`readcontent`) and continue with the data the user's scopes allow. Never log the user JWT or exchanged token values.
+- [x] Verify no MCP write tools are exposed or invoked — agent must reject any user attempt to modify ABAP objects ("I can only read ABAP code — I cannot write to the ABAP system")
+- [x] Implement confidence threshold check: if `ClassificationHint.confidence < 0.7`, mark object with `review_recommended=True` in all output views and reports
+- [x] Implement auth guards in `mcp_auth.py` per the decoupled model: **no user JWT on inbound request → HTTP 401** (reject; never fall back to a service identity). MCP returns **403** (scope insufficient) → raise `InsufficientScopeError`, do NOT retry with elevated credentials, surface a user-facing message naming the missing scope (`read`/`readcontent`) and continue with the data the user's scopes allow. Never log the user JWT or exchanged token values.
 
 ## Delete Template Skill
 
-- [ ] Delete the template runtime skill: `rm -rf assets/abap-clean-core-agent/app/skills/template-skill/`
+- [x] Delete the template runtime skill: `rm -rf assets/abap-clean-core-agent/app/skills/template-skill/`
 
 ## Testing
 
