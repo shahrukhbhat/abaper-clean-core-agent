@@ -17,6 +17,7 @@ from a2a.utils.errors import ServerError
 from agent import SampleAgent
 from load_skill_resources import get_load_skill_resource_tool
 from mcp_tools import get_mcp_tools, get_user_token
+from pipeline_tools import get_pipeline_tools
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,10 @@ class AgentExecutor(A2AAgentExecutor):
             # Network, AGW, or other infrastructure errors
             logger.error(f"Failed to load tools from Agent Gateway: {e}")
 
-        tools = [*tools, *self.skill_tools]
+        # analyze_scope orchestrates the full pipeline and needs the request's MCP tools
+        # (object retrieval is credentials-scoped), so bind it after MCP tools are loaded.
+        pipeline_tools = get_pipeline_tools(tools)
+        tools = [*tools, *pipeline_tools, *self.skill_tools]
 
         updater = TaskUpdater(event_queue, task.id, task.context_id)
 

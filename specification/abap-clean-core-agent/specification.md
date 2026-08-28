@@ -44,7 +44,7 @@
 
 ### System Prompt & Agent Configuration
 
-- [ ] In `app/agent.py`, write the `@prompt_section` system prompt that:
+- [x] In `app/agent.py`, write the `@prompt_section` system prompt that:
   - Identifies the agent as an ABAP Clean Core compliance analyst
   - Instructs the agent to NEVER write to the ABAP system — all MCP tool calls are strictly read-only (`read` and `readcontent` tools only)
   - Instructs the agent to always cite the specific SAP Clean Core rule or white paper principle when giving a verdict — no unexplained classifications
@@ -56,11 +56,11 @@
 
 ### Scope Handling (R1 — Multi-scope ABAP object retrieval)
 
-- [ ] Implement scope parser in `app/scope_parser.py`:
+- [x] Implement scope parser in `app/scope_parser.py`:
   - Accepts: single package name (e.g. `ZMYPACKAGE`), comma-separated package list, transport request number (format `<SID>K<6-digit-number>`), or comma-separated list of individual object names with optional type prefix (e.g. `PROG:ZMYPROGRAM`, `CLAS:ZCL_MY_CLASS`)
   - Returns a normalised `Scope` dataclass: `scope_type` (package | transport | objects), `identifiers: list[str]`, `edition: str | None`
   - Validates input format; returns descriptive error message for unrecognised inputs
-- [ ] Implement object retrieval tool wrapper in `app/tools/retrieve_objects.py`:
+- [x] Implement object retrieval tool wrapper in `app/tools/retrieve_objects.py`:
   - Calls MCP `read` tool to list all ABAP objects in a package or transport
   - Calls MCP `readcontent` tool to fetch full ABAP source for each object
   - Returns list of `ABAPObject` dataclasses: `name`, `type` (PROG / CLAS / FUNC / TABL / etc.), `source`, `package`, `transport`, `retrieval_status` (success | failed | not_found)
@@ -69,24 +69,24 @@
 
 ### Clean Core Classification Engine (R2)
 
-- [ ] Create `app/classification/engine.py` — rule-based pre-classifier:
+- [x] Create `app/classification/engine.py` — rule-based pre-classifier:
   - Scans ABAP source for forbidden patterns before invoking LLM: direct SELECT on SAP internal tables (pattern: `SELECT ... FROM` non-custom table names without Released API wrapper), calls to non-released Function Modules (FM names not in Released API list), direct writes to system-managed tables, use of `CALL FUNCTION ... DESTINATION` without BTP-approved patterns, modification of standard SAP programs via `ENHANCEMENT` without BAdI, access to obsolete APIs flagged in SAP notes
   - Pre-assigns a candidate level (A / B / C / D) based on rule hits
   - Returns `ClassificationHint`: `candidate_level`, `rule_hits: list[str]`, `confidence: float`
   - High-confidence cases (no ambiguity, clear rule match) produce definitive verdicts without LLM call
   - Low-confidence cases (ambiguous patterns) are flagged with `review_recommended=True` and passed to the LLM for final determination
-- [ ] Create `app/classification/rules_config.py` — versioned rules configuration:
+- [x] Create `app/classification/rules_config.py` — versioned rules configuration:
   - Loads Clean Core rules from `app/skills/clean-core-classification/references/clean-core-rules.md`
   - Supports edition-specific rule overrides: on-premise rules are more permissive than Cloud Public (where Released-only API usage is strictly enforced)
   - Rule set version is logged on agent start for traceability
-- [ ] Wire the classification engine into the agent graph in `app/agent.py`:
+- [x] Wire the classification engine into the agent graph in `app/agent.py`:
   - Run rule-based pre-classification first; only invoke LLM for explanation, ambiguous cases, or code-mode remediation
   - Each object's verdict includes: `level` (A/B/C/D), `rationale` (specific rule cited), `review_recommended` flag, `edition` context used
   - Emits `M3.achieved` or `M3.missed` log on completion
 
 ### Extensibility Verdict Engine (R3)
 
-- [ ] Create `app/extensibility/verdict.py`:
+- [x] Create `app/extensibility/verdict.py`:
   - Maps each classified object to one of three extensibility paths:
     - `KEY_USER`: object implements UI adaptation, custom fields, or simple business logic accessible via Key User tools — no ABAP coding required for remediation
     - `ON_STACK`: object can be rewritten using Released APIs / ABAP Cloud Developer model and remain in the S/4HANA stack
@@ -104,7 +104,7 @@
 
 ### Remediation Guidance (R4 — Selectable depth levels)
 
-- [ ] Create `app/remediation/generator.py`:
+- [x] Create `app/remediation/generator.py`:
   - Reads session-level depth mode: `principle` | `api` | `code` (default: `principle`)
   - Accepts per-object depth override via user instruction
   - **Depth 1 — Principle**: generates explanation of the violated rule (from classification rationale) and appends the relevant SAP documentation URL:
@@ -118,16 +118,16 @@
 
 ### Output Views (R5 — Audience-appropriate output)
 
-- [ ] Create `app/output/views.py` — three view renderers:
+- [x] Create `app/output/views.py` — three view renderers:
   - **Developer view** (`render_developer_view(results)`): per-object Markdown table with columns: Object Name | Type | Package | Clean Core Level | Extensibility Path | RICEFW Category | Remediation Summary. Sorted by level D → C → B → A.
   - **Architect view** (`render_architect_view(results)`): extensibility map showing objects grouped by extensibility path (ON_STACK / SIDE_BY_SIDE / KEY_USER). Each group shows object count, list of objects with risk rating (HIGH=Level D, MEDIUM=Level C, LOW=Level B, NONE=Level A). Includes top 10 highest-risk objects prominently.
   - **Governance view** (`render_governance_view(results)`): executive scorecard with: (a) level distribution table (counts + percentages for A/B/C/D), (b) overall risk rating (HIGH if >20% Level D, MEDIUM if >20% Level C, LOW otherwise), (c) extensibility split (on-stack vs side-by-side counts), (d) top 10 highest-risk objects by name and level.
   - All views are generated from the same in-memory `AnalysisResult` object — no re-analysis needed to switch views
-- [ ] Wire view selection into agent conversation: agent detects audience keywords ("developer", "architect", "scorecard", "governance", "summary") in user messages and selects the appropriate view. User can explicitly request a different view at any time.
+- [x] Wire view selection into agent conversation: agent detects audience keywords ("developer", "architect", "scorecard", "governance", "summary") in user messages and selects the appropriate view. User can explicitly request a different view at any time.
 
 ### Report Export (R6 — JSON + Markdown files)
 
-- [ ] Create `app/output/report_writer.py`:
+- [x] Create `app/output/report_writer.py`:
   - `write_json_report(results, scope_id)` — serialises full `AnalysisResult` to JSON:
     ```json
     {
@@ -144,11 +144,11 @@
   - File names: `clean-core-<scope_id>-<YYYYMMDD-HHMMSS>.json` and `clean-core-<scope_id>-<YYYYMMDD-HHMMSS>.md`
   - Files are written to `./reports/` directory (created if not exists)
   - Emits `M6.achieved` or `M6.missed` log on completion
-- [ ] Wire report export into agent: trigger automatically at end of a complete analysis session; also triggerable by user saying "export", "save report", or "download findings"
+- [x] Wire report export into agent: trigger automatically at end of a complete analysis session; also triggerable by user saying "export", "save report", or "download findings"
 
 ### Business Step Instrumentation (Milestones M1–M6)
 
-- [ ] Implement all milestone log emissions in `app/agent.py` and relevant tool/engine modules. Extract all business logic from `stream()` into `_run_agent()` helper and instrument with OpenTelemetry spans. **Never wrap `yield` inside `with tracer.start_as_current_span(...)`.** Pattern:
+- [x] Implement all milestone log emissions in `app/agent.py` and relevant tool/engine modules. Extract all business logic from `stream()` into `_run_agent()` helper and instrument with OpenTelemetry spans. **Never wrap `yield` inside `with tracer.start_as_current_span(...)`.** Pattern:
   ```python
   # M1 — Scope Defined
   logger.info("M1.achieved: scope confirmed — %d objects identified in scope '%s'", object_count, scope_id)
@@ -180,10 +180,10 @@
 
 ## S/4HANA Edition Support (R9 — High-want)
 
-- [ ] Add edition context to `Scope` dataclass: `edition: Literal["on-premise", "private-cloud", "public-cloud"] | None`
-- [ ] Agent asks for edition at session start if not provided; defaults to `on-premise` if user skips
-- [ ] Classification engine applies edition-specific strictness: Public Cloud enforces Released-only APIs (any non-released API = Level D); Private Cloud and on-premise treat non-released APIs with existing BAdI coverage as Level C
-- [ ] Include edition in all report outputs for traceability
+- [x] Add edition context to `Scope` dataclass: `edition: Literal["on-premise", "private-cloud", "public-cloud"] | None`
+- [x] Agent asks for edition at session start if not provided; defaults to `on-premise` if user skips
+- [x] Classification engine applies edition-specific strictness: Public Cloud enforces Released-only APIs (any non-released API = Level D); Private Cloud and on-premise treat non-released APIs with existing BAdI coverage as Level C
+- [x] Include edition in all report outputs for traceability
 
 ## Guardrails Implementation
 
@@ -197,19 +197,19 @@
 
 ## Testing
 
-- [ ] `conftest.py` only sets `IBD_TESTING=true` — this causes the agent to run with mock MCP tool results (from `mcp-mock.json`) during tests
-- [ ] Write unit test `tests/test_scope_parser.py` — tests: valid package name, comma-separated packages, transport request format, individual object list, invalid input error message; run immediately after writing
-- [ ] Write unit test `tests/test_classification_engine.py` — tests: Level A detection (standard SAP object, no custom code), Level B detection (uses only Released APIs), Level C detection (mixed usage), Level D detection (direct SELECT on internal table, non-released FM call); mock LLM; run immediately after writing
-- [ ] Write unit test `tests/test_extensibility_verdict.py` — tests: Report → SIDE_BY_SIDE, Enhancement with released BAdI → ON_STACK, Form → SIDE_BY_SIDE, Level A → ON_STACK; run immediately after writing
-- [ ] Write unit test `tests/test_remediation_generator.py` — tests: principle mode returns doc link, api mode returns replacement API name, code mode returns snippet with disclaimer, Levels A/B return no remediation; mock LLM for api and code modes; run immediately after writing
-- [ ] Write unit test `tests/test_report_writer.py` — tests: JSON file written with correct schema, Markdown file written, file names include scope ID and timestamp; run immediately after writing
-- [ ] Write unit test `tests/test_output_views.py` — tests: developer view table contains all objects, architect view groups by extensibility path, governance view shows correct level distribution percentages; run immediately after writing
-- [ ] Write unit test `tests/test_mcp_auth.py` — tests: exchanged token acquired from a mocked Destination service response, token cached and reused per-user (keyed by `sub`) before expiry, proactive eviction when < 60 s remaining, missing user JWT → HTTP 401 / reject (no service-identity fallback), MCP 403 → `InsufficientScopeError` with a user-facing message and no credential/token values logged; mock the Destination service HTTP calls; run immediately after writing
-- [ ] Write one integration test `tests/test_integration.py` — end-to-end: submit a mock package scope, verify all 6 milestones fire, verify JSON and Markdown reports are written, verify LLM is mocked; run immediately after writing
-- [ ] Run `pytest` from `assets/abap-clean-core-agent/` (no args) — if coverage < 70%, add tests until threshold met
-- [ ] Verify `assets/abap-clean-core-agent/app/agent.py` has exactly 4 decorated functions — run `grep -c "^@agent_model\|^@agent_config\|^@prompt_section" assets/abap-clean-core-agent/app/agent.py` and confirm it returns 4; remove extra decorators if more than 4
-- [ ] Run `pytest` again from `assets/abap-clean-core-agent/` (no args) to generate final `test_report.json`
-- [ ] Verify `test_report.json` exists in `assets/abap-clean-core-agent/`
+- [x] `conftest.py` only sets `IBD_TESTING=true` — this causes the agent to run with mock MCP tool results (from `mcp-mock.json`) during tests
+- [x] Write unit test `tests/test_scope_parser.py` — tests: valid package name, comma-separated packages, transport request format, individual object list, invalid input error message; run immediately after writing
+- [x] Write unit test `tests/test_classification_engine.py` — tests: Level A detection (standard SAP object, no custom code), Level B detection (uses only Released APIs), Level C detection (mixed usage), Level D detection (direct SELECT on internal table, non-released FM call); mock LLM; run immediately after writing
+- [x] Write unit test `tests/test_extensibility_verdict.py` — tests: Report → SIDE_BY_SIDE, Enhancement with released BAdI → ON_STACK, Form → SIDE_BY_SIDE, Level A → ON_STACK; run immediately after writing
+- [x] Write unit test `tests/test_remediation_generator.py` — tests: principle mode returns doc link, api mode returns replacement API name, code mode returns snippet with disclaimer, Levels A/B return no remediation; mock LLM for api and code modes; run immediately after writing
+- [x] Write unit test `tests/test_report_writer.py` — tests: JSON file written with correct schema, Markdown file written, file names include scope ID and timestamp; run immediately after writing
+- [x] Write unit test `tests/test_output_views.py` — tests: developer view table contains all objects, architect view groups by extensibility path, governance view shows correct level distribution percentages; run immediately after writing
+- [x] Write unit test `tests/test_mcp_auth.py` — tests: exchanged token acquired from a mocked Destination service response, token cached and reused per-user (keyed by `sub`) before expiry, proactive eviction when < 60 s remaining, missing user JWT → HTTP 401 / reject (no service-identity fallback), MCP 403 → `InsufficientScopeError` with a user-facing message and no credential/token values logged; mock the Destination service HTTP calls; run immediately after writing
+- [x] Write one integration test `tests/test_integration.py` — end-to-end: submit a mock package scope, verify all 6 milestones fire, verify JSON and Markdown reports are written, verify LLM is mocked; run immediately after writing
+- [x] Run `pytest` from `assets/abap-clean-core-agent/` (no args) — if coverage < 70%, add tests until threshold met
+- [x] Verify `assets/abap-clean-core-agent/app/agent.py` has exactly 4 decorated functions — run `grep -c "^@agent_model\|^@agent_config\|^@prompt_section" assets/abap-clean-core-agent/app/agent.py` and confirm it returns 4; remove extra decorators if more than 4
+- [x] Run `pytest` again from `assets/abap-clean-core-agent/` (no args) to generate final `test_report.json`
+- [x] Verify `test_report.json` exists in `assets/abap-clean-core-agent/`
 
 ## Agent Evaluation
 
