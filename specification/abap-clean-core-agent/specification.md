@@ -246,7 +246,7 @@
 
 ### MCP connectivity via Destination service
 
-- [ ] Configure a BTP **Destination** named `ai-abaper-mcp` in the BTP cockpit (Connectivity → Destinations). **This is a hard prerequisite — the MCP path will not work without it.** Settings:
+- [x] Configure a BTP **Destination** named `ai-abaper-mcp` in the BTP cockpit (Connectivity → Destinations). **This is a hard prerequisite — the MCP path will not work without it.** Settings:
   - `Type`: HTTP
   - `URL`: `<abaper-mcp CF route>` (e.g. `https://sap-coe-na-development-abaper-mcp.cfapps.eu10.hana.ondemand.com`)
   - `ProxyType`: Internet
@@ -273,4 +273,4 @@
 - [x] **Prerequisites**: entitlements present (`aicore` extended, `xsuaa` application, `destination` lite); `cf` CLI logged in to org `SAP CoE NA` / space `Development`; `mbt` 1.2.47 installed. `ai-abaper-mcp` already deployed in this space.
 - [x] `mbt build` → produced `mta_archives/abap-clean-core-agent_1.0.0.mtar` (145 KB, 86 files — `.venv` excluded via `build-parameters.ignore`).
 - [x] `cf deploy <archive>.mtar` → created/bound `aicore`, `agent-xsuaa`, `agent-destination`; app `abap-clean-core-agent` started (1/1). Python 3.13.14 / buildpack 1.9.2.
-- [x] Validate: `cf apps` shows `abap-clean-core-agent` started (1/1); `GET https://sap-coe-na-development-abap-clean-core-agent.cfapps.eu10.hana.ondemand.com/.well-known/agent.json` → 200; `AGENT_PUBLIC_URL` correct (single `https://` scheme). `AICORE_*` env vars set via `cf set-env` + `cf restage` — confirmed in `cf env`. M1–M6 milestone validation and `api`/`code`-depth remediation require a live user JWT (A2A caller) — deferred to integration smoke test.
+- [x] Validate: `cf apps` shows `abap-clean-core-agent` started (1/1); `GET /.well-known/agent.json` → 200; `AGENT_PUBLIC_URL` correct (single `https://` scheme). `AICORE_*` env vars set via `cf set-env` + `cf restage`. **End-to-end smoke test passed** (2026-08-29): `message/send` JSON-RPC call with real user JWT (scope `abap-clean-core-agent!t118136.invoke`) → Destination exchange succeeded → MCP connected → AI Core (Claude 4.5 Sonnet via Gen AI Hub) responded → M1.achieved + M6.achieved confirmed in `cf logs`; M2–M5 missed because package `ZSB_CCM_AGENT` has 0 objects (expected). Reports written to `./reports/`. Note: `AICORE_CLIENT_ID` and `AICORE_CLIENT_SECRET` must be set with **single quotes** in `cf set-env` — the secret contains `$` which shell-expands in double quotes and truncates the value.
