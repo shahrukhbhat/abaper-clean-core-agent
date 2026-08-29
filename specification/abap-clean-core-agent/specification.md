@@ -246,7 +246,15 @@
 
 ### MCP connectivity via Destination service
 
-- [x] Configure a BTP **Destination** named `ai-abaper-mcp` (via BTP cockpit or `mta.yaml` resource params): `Type=HTTP`, `URL=<mcp CF route>`, `ProxyType=Internet`, `Authentication=OAuth2UserTokenExchange`, `TokenServiceURL=<ai-abaper-mcp-xsuaa URL>/oauth/token`, `ClientId`/`ClientSecret` from the `ai-abaper-mcp-xsuaa` `token-exchange-key` service key. This is the credential the agent (or any consuming agent) uses — see `mcp_auth.py` items in the MCP Server Integration section. *(Destination `ai-abaper-mcp` pre-existed, bound to `ai-abaper-mcp-dest`; agent reads it via the bound `agent-destination` service.)*
+- [ ] Configure a BTP **Destination** named `ai-abaper-mcp` in the BTP cockpit (Connectivity → Destinations). **This is a hard prerequisite — the MCP path will not work without it.** Settings:
+  - `Type`: HTTP
+  - `URL`: `<abaper-mcp CF route>` (e.g. `https://sap-coe-na-development-abaper-mcp.cfapps.eu10.hana.ondemand.com`)
+  - `ProxyType`: Internet
+  - `Authentication`: OAuth2UserTokenExchange
+  - `TokenServiceURL`: `<ai-abaper-mcp-xsuaa url>/oauth/token`
+  - `Client ID` / `Client Secret`: from the `ai-abaper-mcp-xsuaa` service key
+
+  The agent reads both the **MCP server URL** and the **exchanged Bearer token** from this single Destination lookup (`mcp_auth.py` + `mcp_tools.py`) — no `MCP_SERVER_URL` env var is needed.
 - [x] **Verify MCP XSUAA grant type** (15-min spike, unblocks the whole path): `cf service-key ai-abaper-mcp-xsuaa <key>` and confirm `grant_types` includes `urn:ietf:params:oauth:grant-type:jwt-bearer`. If missing, add `"oauth2-configuration": { "grant-types": ["urn:ietf:params:oauth:grant-type:jwt-bearer"] }` to the MCP's `xs-security.json` and run `cf update-service ai-abaper-mcp-xsuaa -c xs-security.json`. *(Service key `sk-xsuaa-mcp` inspected — jwt-bearer grant not listed in key JSON; deferred to runtime MCP-path validation when a live user JWT is available.)*
 - [x] **Verify trust**: the agent's XSUAA and the MCP's XSUAA must be in the same trust domain (same subaccount, or both trusting the same IAS tenant). If not, establish cross-subaccount trust in the BTP cockpit. *(Both agent-xsuaa and ai-abaper-mcp-xsuaa are in the same subaccount / identityzone `coena` — trust confirmed.)*
 - [x] **Role collections (MCP-side, done by MCP owner / subaccount admin — no agent config change)**: `ABAPer MCP - Standard` (role template `MCPToolUser` → `read`) and `ABAPer MCP - Data` (role template `MCPDataReader` → `read` + `readcontent`). Assign users/groups accordingly. *(External dependency — MCP owner action; no agent config change required.)*

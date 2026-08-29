@@ -36,7 +36,9 @@ class TestGetAuthHeaders:
 
         def fake_exchange(user_jwt):
             calls["n"] += 1
-            return clean_auth._CachedToken(value=f"tok-{calls['n']}", expires_at=time.time() + 3600)
+            return clean_auth._CachedDestination(
+                token=f"tok-{calls['n']}", mcp_url="https://mcp.example", expires_at=time.time() + 3600
+            )
 
         monkeypatch.setattr(clean_auth, "_exchange_user_token", fake_exchange)
 
@@ -52,7 +54,9 @@ class TestGetAuthHeaders:
 
         def fake_exchange(user_jwt):
             counter["n"] += 1
-            return clean_auth._CachedToken(value=f"tok-{counter['n']}", expires_at=time.time() + 3600)
+            return clean_auth._CachedDestination(
+                token=f"tok-{counter['n']}", mcp_url="https://mcp.example", expires_at=time.time() + 3600
+            )
 
         monkeypatch.setattr(clean_auth, "_exchange_user_token", fake_exchange)
 
@@ -68,7 +72,9 @@ class TestGetAuthHeaders:
             counter["n"] += 1
             # First token expires in 30s (< 60s margin) → considered stale immediately.
             ttl = 30 if counter["n"] == 1 else 3600
-            return clean_auth._CachedToken(value=f"tok-{counter['n']}", expires_at=time.time() + ttl)
+            return clean_auth._CachedDestination(
+                token=f"tok-{counter['n']}", mcp_url="https://mcp.example", expires_at=time.time() + ttl
+            )
 
         monkeypatch.setattr(clean_auth, "_exchange_user_token", fake_exchange)
 
@@ -84,7 +90,9 @@ class TestGetAuthHeaders:
         secret_jwt = _make_jwt("user-D")
 
         def fake_exchange(user_jwt):
-            return clean_auth._CachedToken(value="SUPER-SECRET-TOKEN", expires_at=time.time() + 3600)
+            return clean_auth._CachedDestination(
+                token="SUPER-SECRET-TOKEN", mcp_url="https://mcp.example", expires_at=time.time() + 3600
+            )
 
         monkeypatch.setattr(clean_auth, "_exchange_user_token", fake_exchange)
 

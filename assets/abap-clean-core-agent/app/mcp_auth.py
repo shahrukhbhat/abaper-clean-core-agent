@@ -66,19 +66,10 @@ class MissingUserTokenError(Exception):
     """
 
 
-class _CachedToken:
-    __slots__ = ("value", "expires_at")
-
-    def __init__(self, value: str, expires_at: float):
-        self.value = value
-        self.expires_at = expires_at
-
-    def is_fresh(self, now: float) -> bool:
-        return (self.expires_at - now) > _TOKEN_EVICT_MARGIN_SECONDS
-
-
-# Per-user cache of exchanged tokens, keyed by the `sub` claim of the user JWT.
-_token_cache: dict[str, _CachedToken] = {}
+# Per-user cache of Destination lookups, keyed by the `sub` claim of the user JWT.
+# Each entry holds both the MCP-scoped token and the MCP server URL so that a
+# single Destination API call satisfies both needs (auth + routing).
+_token_cache: dict[str, "_CachedDestination"] = {}
 _cache_lock = threading.Lock()
 
 
@@ -157,11 +148,27 @@ def _get_destination_service_token(creds: dict[str, Any]) -> str:
     return resp.json()["access_token"]
 
 
-def _exchange_user_token(user_jwt: str) -> _CachedToken:
+class _CachedDestination:
+    """Holds both the exchanged MCP token and the MCP server URL from one lookup."""
+    __slots__ = ("token", "mcp_url", "expires_at")
+
+    def __init__(self, token: str, mcp_url: str, expires_at: float):
+        self.token = token
+        self.mcp_url = mcp_url
+        self.expires_at = expires_at
+
+    def is_fresh(self, now: float) -> bool:
+        return (self.expires_at - now) > _TOKEN_EVICT_MARGIN_SECONDS
+
+
+def _exchange_user_token(user_jwt: str) -> _CachedDestination:
     """Perform the Destination-service token exchange for the given user JWT.
 
-    Returns a freshly exchanged, cache-ready token. Raises on transport errors
-    so the caller can decide how to surface them.
+    Returns the exchanged MCP-scoped token AND the MCP server URL from the
+    Destination configuration — both come from the same API response so there
+    is no need for a separate MCP_SERVER_URL env var.
+
+    Raises on transport errors so the caller can decide how to surface them.
     """
     creds = _load_destination_credentials()
     dest_base = creds["uri"].rstrip("/")
@@ -195,7 +202,37 @@ def _exchange_user_token(user_jwt: str) -> _CachedToken:
     except (TypeError, ValueError):
         ttl = _DEFAULT_TOKEN_TTL_SECONDS
 
-    return _CachedToken(value=token_value, expires_at=time.time() + ttl)
+    # The Destination configuration carries the MCP server URL — read it once
+    # here so mcp_tools.py never needs a separate MCP_SERVER_URL env var.
+    dest_config = body.get("destinationConfiguration") or {}
+    mcp_url = dest_config.get("URL", "").rstrip("/")
+    if not mcp_url:
+        raise RuntimeError(
+            "Destination lookup returned no URL in destinationConfiguration — "
+            "ensure the 'ai-abaper-mcp' Destination has the MCP server URL set"
+        )
+
+    return _CachedDestination(token=token_value, mcp_url=mcp_url, expires_at=time.time() + ttl)
+
+
+def _get_cached(user_jwt: str) -> _CachedDestination:
+    """Return a fresh cached Destination entry, exchanging if necessary."""
+    key = _cache_key(user_jwt)
+    now = time.time()
+
+    with _cache_lock:
+        cached = _token_cache.get(key)
+        if cached is not None and cached.is_fresh(now):
+            return cached
+
+    # Exchange outside the lock (network call); tolerate a benign race where two
+    # requests for the same user exchange concurrently — last write wins.
+    fresh = _exchange_user_token(user_jwt)
+
+    with _cache_lock:
+        _token_cache[key] = fresh
+
+    return fresh
 
 
 def get_auth_headers(user_jwt: Optional[str]) -> dict[str, str]:
@@ -217,24 +254,34 @@ def get_auth_headers(user_jwt: Optional[str]) -> dict[str, str]:
         raise MissingUserTokenError(
             "No user JWT present — cannot exchange for an MCP-scoped token"
         )
-
-    key = _cache_key(user_jwt)
-    now = time.time()
-
-    with _cache_lock:
-        cached = _token_cache.get(key)
-        if cached is not None and cached.is_fresh(now):
-            return {"Authorization": f"Bearer {cached.value}"}
-
-    # Exchange outside the lock (network call); tolerate a benign race where two
-    # requests for the same user exchange concurrently — last write wins.
-    fresh = _exchange_user_token(user_jwt)
-
-    with _cache_lock:
-        _token_cache[key] = fresh
-
+    entry = _get_cached(user_jwt)
     logger.debug("MCP-scoped token acquired via Destination exchange (user cached)")
-    return {"Authorization": f"Bearer {fresh.value}"}
+    return {"Authorization": f"Bearer {entry.token}"}
+
+
+def get_mcp_server_url(user_jwt: Optional[str]) -> str:
+    """Return the MCP server URL from the Destination configuration.
+
+    The URL is read from the ``ai-abaper-mcp`` Destination's
+    ``destinationConfiguration.URL`` field, which is returned by the same
+    Destination-service API call that performs the token exchange. No separate
+    ``MCP_SERVER_URL`` env var is needed.
+
+    Args:
+        user_jwt: The end-user's JWT (required; same as for get_auth_headers).
+
+    Returns:
+        The MCP server base URL (trailing slash stripped).
+
+    Raises:
+        MissingUserTokenError: if ``user_jwt`` is falsy.
+        RuntimeError: if the Destination carries no URL.
+    """
+    if not user_jwt:
+        raise MissingUserTokenError(
+            "No user JWT present — cannot look up the MCP server URL"
+        )
+    return _get_cached(user_jwt).mcp_url
 
 
 def clear_cache() -> None:

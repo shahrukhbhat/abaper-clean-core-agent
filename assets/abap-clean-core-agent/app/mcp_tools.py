@@ -9,10 +9,12 @@ Two transports are supported; the active one is selected by the
   Destination service token-exchange (DEFAULT — ``MCP_TRANSPORT`` unset or
   anything other than ``agw``):
       Forwards the end-user JWT to the bound BTP Destination service, which
-      swaps it for an MCP-scoped token (OAuth2UserTokenExchange). The agent
-      then calls the MCP server over Streamable HTTP directly, injecting that
-      Bearer token via ``mcp_auth.get_auth_headers()``. This is the canonical
-      CF + AI Core deployment path today.
+      swaps it for an MCP-scoped token (OAuth2UserTokenExchange) AND returns
+      the MCP server URL from the Destination configuration. The agent then
+      calls the MCP server over Streamable HTTP directly, injecting that
+      Bearer token via ``mcp_auth.get_auth_headers()``. No ``MCP_SERVER_URL``
+      env var is needed — the URL is read from the Destination. This is the
+      canonical CF + AI Core deployment path today.
 
   SAP Agent Gateway (``MCP_TRANSPORT=agw``):
       Uses the Agent Gateway client from the SDK to connect via mTLS. Kept
@@ -65,10 +67,8 @@ _agw_client: Optional[Any] = None
 _MOCK_FILE = Path(__file__).parent.parent / "mcp-mock.json"
 
 # --- Destination-transport (direct Streamable-HTTP MCP) tunables ------------
-# Base URL of the MCP server reached directly over Streamable HTTP. Supplied at
-# deployment runtime; the Destination service issues the Bearer token, this URL
-# is where the MCP JSON-RPC endpoint lives.
-_MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "").strip()
+# MCP server URL is read from the Destination configuration at runtime via
+# mcp_auth.get_mcp_server_url() — no MCP_SERVER_URL env var required.
 # Own retry policy for the Destination/direct-HTTP path — deliberately separate
 # from util.py's AGW retry (per transport-decoupling decision).
 _DEST_RETRY_ATTEMPTS = int(os.environ.get("MCP_DEST_RETRY_ATTEMPTS", 4))
@@ -338,15 +338,21 @@ async def _get_mcp_tools_destination(user_token: str) -> list:
     """Destination transport: list MCP tools over Streamable HTTP.
 
     Uses the MCP Python SDK's ``streamablehttp_client`` with a Bearer token
-    obtained from the BTP Destination service (OAuth2UserTokenExchange). Tools
-    are converted to LangChain ``StructuredTool`` instances whose execution
-    opens a fresh session per call, re-reading the user token from context so
-    cached tools use per-request credentials.
+    obtained from the BTP Destination service (OAuth2UserTokenExchange). The
+    MCP server URL is also read from the Destination configuration — no
+    separate MCP_SERVER_URL env var is required. Tools are converted to
+    LangChain ``StructuredTool`` instances whose execution opens a fresh
+    session per call, re-reading the user token from context so cached tools
+    use per-request credentials.
     """
-    if not _MCP_SERVER_URL:
+    try:
+        mcp_server_url = mcp_auth.get_mcp_server_url(user_token)
+    except Exception:
         logger.error(
-            "MCP_SERVER_URL is not set — cannot reach the MCP server over the "
-            "Destination (Streamable-HTTP) transport"
+            "Could not resolve MCP server URL from Destination '%s' — "
+            "ensure the Destination exists in BTP and the agent-destination "
+            "service binding is present",
+            mcp_auth._DESTINATION_NAME,
         )
         return []
 
@@ -356,7 +362,7 @@ async def _get_mcp_tools_destination(user_token: str) -> list:
 
         headers = _mcp_request_headers(user_token)
 
-        async with streamablehttp_client(_MCP_SERVER_URL, headers=headers) as (
+        async with streamablehttp_client(mcp_server_url, headers=headers) as (
             read_stream,
             write_stream,
             _get_session_id,
@@ -390,7 +396,6 @@ async def _get_mcp_tools_destination(user_token: str) -> list:
         return langchain_tools
 
     except mcp_auth.MissingUserTokenError:
-        # Defensive — user_token was validated non-empty upstream.
         logger.exception("MCP token exchange attempted without a user JWT")
         return []
     except Exception:
@@ -454,10 +459,11 @@ async def _call_destination_tool_once(tool_name: str, user_token: str, **kwargs:
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
+    mcp_server_url = mcp_auth.get_mcp_server_url(user_token)
     headers = _mcp_request_headers(user_token)
 
     try:
-        async with streamablehttp_client(_MCP_SERVER_URL, headers=headers) as (
+        async with streamablehttp_client(mcp_server_url, headers=headers) as (
             read_stream,
             write_stream,
             _get_session_id,

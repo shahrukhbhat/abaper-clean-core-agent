@@ -18,6 +18,22 @@ version: 1.0.0
 #   cf restage abap-clean-core-agent
 #
 # The SDK auto-appends /oauth/token to AICORE_AUTH_URL and /v2 to AICORE_BASE_URL.
+#
+# MCP CONNECTIVITY PREREQUISITE (one-time, in BTP cockpit):
+# The agent reaches the abaper-mcp server via a BTP Destination named "ai-abaper-mcp".
+# Create it in the BTP cockpit (Connectivity > Destinations) with:
+#
+#   Name:                ai-abaper-mcp
+#   Type:                HTTP
+#   URL:                 <abaper-mcp CF route, e.g. https://...cfapps.eu10.hana.ondemand.com>
+#   ProxyType:           Internet
+#   Authentication:      OAuth2UserTokenExchange
+#   TokenServiceURL:     <ai-abaper-mcp-xsuaa url>/oauth/token
+#   Client ID:           <clientid from ai-abaper-mcp-xsuaa service key>
+#   Client Secret:       <clientsecret from ai-abaper-mcp-xsuaa service key>
+#
+# The agent reads the MCP server URL AND the exchanged Bearer token from this single
+# Destination lookup (mcp_auth.py + mcp_tools.py) — no MCP_SERVER_URL env var needed.
 
 parameters:
   enable-parallel-deployments: true
