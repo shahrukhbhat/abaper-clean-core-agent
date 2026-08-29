@@ -1,0 +1,96 @@
+_schema-version: "3.3"
+ID: abap-clean-core-agent
+version: 1.0.0
+
+# Canonical Cloud Foundry deployment for the ABAP Clean Core Compliance Agent.
+# Single module: the MCP server (ai-abaper-mcp / CF app "abaper-mcp") is already
+# deployed separately, so it is NOT co-deployed here. The agent reaches it through
+# the existing "ai-abaper-mcp-dest" BTP Destination, read at runtime from the bound
+# destination service (mcp_auth.py) — no cross-module wiring needed.
+#
+# POST-DEPLOY (one-time, per CF space): set_aicore_config() reads AICORE_* env vars,
+# not VCAP_SERVICES, so the binding alone is insufficient. After every fresh deploy run:
+#
+#   cf set-env abap-clean-core-agent AICORE_CLIENT_ID     <clientid from aicore service key>
+#   cf set-env abap-clean-core-agent AICORE_CLIENT_SECRET <clientsecret from aicore service key>
+#   cf set-env abap-clean-core-agent AICORE_AUTH_URL      <url from aicore service key>
+#   cf set-env abap-clean-core-agent AICORE_BASE_URL      <serviceurls.AI_API_URL from service key>
+#   cf restage abap-clean-core-agent
+#
+# The SDK auto-appends /oauth/token to AICORE_AUTH_URL and /v2 to AICORE_BASE_URL.
+
+parameters:
+  enable-parallel-deployments: true
+
+modules:
+  - name: abap-clean-core-agent
+    type: python
+    path: .
+    build-parameters:
+      # Exclude local dev/test artifacts from the packaged droplet. The CF
+      # python_buildpack installs deps from requirements.txt at staging, so the
+      # local .venv (426M) must never be bundled.
+      ignore:
+        - ".venv/"
+        - "venv/"
+        - "__pycache__/"
+        - "*.pyc"
+        - ".pytest_cache/"
+        - ".coverage"
+        - "coverage.json"
+        - "htmlcov/"
+        - "reports/"
+        - "mta_archives/"
+        - "prebuilt_tests/"
+        - "aeval/"
+        - "tests/"
+        - "test_report.json"
+        - ".git/"
+    parameters:
+      # InMemoryTaskStore() in main.py is per-process; task state is not shared
+      # across instances. Keep at 1 until a persistent store (Redis/HANA) is added.
+      instances: 1
+      buildpack: python_buildpack
+      command: python app/main.py
+      memory: 512M
+      disk-quota: 1024M
+    provides:
+      - name: agent-api
+        properties:
+          # Own public route, consumed by AgentCard in main.py (main.py:95 uses
+          # this value verbatim). ${default-url} already includes the https:// scheme.
+          AGENT_PUBLIC_URL: "${default-url}"
+    properties:
+      AGENT_PUBLIC_URL: "${default-url}"
+    requires:
+      - name: aicore
+      - name: agent-xsuaa
+      - name: agent-destination
+
+resources:
+  # AI Core binding — entitlement and quota tracking. Credentials are surfaced as
+  # AICORE_* env vars via cf set-env (see post-deploy instructions above).
+  # Plan "extended" includes Generative AI Hub ("standard" does not exist for this broker).
+  - name: aicore
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: aicore
+      service-plan: extended
+
+  # Agent's OWN identity (A2A callers authenticate here). Minimal by design:
+  # only $XSAPPNAME.invoke + AgentUser — NO foreign-scope-references to MCP.
+  - name: agent-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+
+  # Destination service — the agent reads the "ai-abaper-mcp" Destination
+  # (already provisioned as instance "ai-abaper-mcp-dest") from here at runtime
+  # to perform the OAuth2UserTokenExchange (JWT-bearer) call to the MCP server.
+  - name: agent-destination
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: destination
+      service-plan: lite

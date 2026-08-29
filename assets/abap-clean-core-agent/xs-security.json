@@ -1,0 +1,10 @@
+{
+  "xsappname": "abap-clean-core-agent",
+  "tenant-mode": "dedicated",
+  "scopes": [
+    { "name": "$XSAPPNAME.invoke", "description": "Invoke the agent" }
+  ],
+  "role-templates": [
+    { "name": "AgentUser", "scope-references": ["$XSAPPNAME.invoke"] }
+  ]
+}

@@ -16,4 +16,4 @@ Check off items as completed.
 
 ## Deployment
 
-- [ ] Execute the **Deployment (Cloud Foundry + AI Core / Gen AI Hub)** section of `specification/abap-clean-core-agent/specification.md` — the canonical self-managed MTA path (artifacts, agent XSUAA, Destination-based MCP auth, `mta.yaml`, build/deploy/validate runbook). Detailed rationale in `specification/plans/cf-aicore-deployment-plan.md`. The Joule Studio / Marketplace path (`solution.yaml` + `asset.yaml`) is legacy/parallel.
+- [x] Execute the **Deployment (Cloud Foundry + AI Core / Gen AI Hub)** section of `specification/abap-clean-core-agent/specification.md` — the canonical self-managed MTA path (artifacts, agent XSUAA, Destination-based MCP auth, `mta.yaml`, build/deploy/validate runbook). Detailed rationale in `specification/plans/cf-aicore-deployment-plan.md`. The Joule Studio / Marketplace path (`solution.yaml` + `asset.yaml`) is legacy/parallel.
