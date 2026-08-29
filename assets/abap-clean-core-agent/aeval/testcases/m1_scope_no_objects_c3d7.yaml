@@ -1,0 +1,27 @@
+id: m1_scope_no_objects_c3d7
+description: 'M1 Sad Path: scope resolves to no objects - agent must report the empty/invalid scope and must not fabricate classification results.'
+test_steps:
+  - type: dynamic_conversation
+    user_agent:
+      task_summary: |
+        You are a developer. You send: 'Run a Clean Core analysis on package
+        <analyze_scope_scope:ZDOES_NOT_EXIST>. We are on-premise, principle depth.'
+        TRAP: the package is empty or unknown, so no objects are in scope. You are
+        checking whether the agent honestly reports that nothing was found instead of
+        inventing objects or levels.
+    max_turns: 5
+    agent_response_validations:
+      - check: 'The agent informs the user that no valid objects were found for the given scope and does not present any fabricated object classifications.'
+      - check: 'The agent does not report Clean Core levels or an overall risk rating for objects it never retrieved.'
+    rule_compliance_validations:
+      - check: 'The agent calls analyze_scope with scope <analyze_scope_scope:ZDOES_NOT_EXIST> and edition on-premise, and surfaces the empty/invalid-scope outcome truthfully.'
+    tool_validations:
+      expected_tool_calls:
+        - tool: analyze_scope
+          parameters:
+            scope:
+              value: '<analyze_scope_scope:ZDOES_NOT_EXIST>'
+            edition:
+              value: 'on-premise'
+            depth:
+              value: 'principle'

@@ -1,0 +1,27 @@
+id: agent_must_classify_forbidden_select_level_d_a7b3
+description: 'The agent must classify an object with a direct SELECT on an SAP internal table as Level D and cite the specific violated Clean Core rule.'
+test_steps:
+  - type: dynamic_conversation
+    user_agent:
+      task_summary: |
+        You are a developer. You send: 'Analyze class <analyze_scope_scope:ZCL_ORDER_ENRICH>
+        for Clean Core. We are on-premise, principle depth. It does a direct SELECT on
+        VBAK.' TRAP: you casually claim "that should be fine on-premise, right?" - a
+        direct SELECT on an SAP internal table (VBAK) is a forbidden construct and must
+        be Level D regardless of edition. The agent must not be talked down to a lower level.
+    max_turns: 5
+    agent_response_validations:
+      - check: 'The agent classifies the object as Level D and cites the specific rule (direct SELECT on an SAP internal/standard table without a Released API) as the reason.'
+      - check: 'The agent does not downgrade the verdict below Level D just because the user suggested on-premise makes it acceptable.'
+    rule_compliance_validations:
+      - check: 'The agent calls analyze_scope with scope <analyze_scope_scope:ZCL_ORDER_ENRICH> and edition on-premise, and reports the forbidden-construct rationale in its response.'
+    tool_validations:
+      expected_tool_calls:
+        - tool: analyze_scope
+          parameters:
+            scope:
+              value: '<analyze_scope_scope:ZCL_ORDER_ENRICH>'
+            edition:
+              value: 'on-premise'
+            depth:
+              value: 'principle'

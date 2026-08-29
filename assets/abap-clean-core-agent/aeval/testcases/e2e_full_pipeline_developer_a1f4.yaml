@@ -1,0 +1,32 @@
+id: e2e_full_pipeline_developer_a1f4
+description: 'E2E Happy Path: analyze a package end-to-end and return the developer view - validates M1 Scope Defined through M6 Report Saved.'
+test_steps:
+  - type: dynamic_conversation
+    user_agent:
+      task_summary: |
+        You are an S/4HANA migration developer. You send: 'Analyze package
+        <analyze_scope_scope:ZFIN_REPORTING> for Clean Core compliance. We are on
+        public-cloud. Give me the developer view and use api-depth remediation.'
+        You have already stated the edition (public-cloud) and depth (api), so the
+        agent should not need to re-ask. You expect a per-object developer table with
+        Clean Core levels and remediation summaries.
+    max_turns: 5
+    agent_response_validations:
+      - check: 'The agent returns a developer view listing the analyzed objects with their Clean Core level (A/B/C/D) and a remediation summary per object.'
+      - check: 'The agent cites the specific SAP Clean Core rule or principle behind each non-compliant classification rather than asserting a bare level.'
+      - check: 'The agent states the S/4HANA edition (public-cloud) it applied to the analysis.'
+    rule_compliance_validations:
+      - check: 'The agent calls analyze_scope with scope <analyze_scope_scope:ZFIN_REPORTING>, edition public-cloud, depth api, and view developer.'
+      - check: 'The agent does not re-ask for edition or depth because the user already supplied both.'
+    tool_validations:
+      expected_tool_calls:
+        - tool: analyze_scope
+          parameters:
+            scope:
+              value: '<analyze_scope_scope:ZFIN_REPORTING>'
+            edition:
+              value: 'public-cloud'
+            depth:
+              value: 'api'
+            view:
+              value: 'developer'

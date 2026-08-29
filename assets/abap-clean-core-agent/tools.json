@@ -1,0 +1,78 @@
+[
+  {
+    "name": "analyze_scope",
+    "description": "Run the full Clean Core analysis pipeline over an ABAP scope: parse scope, retrieve objects, classify (A-D), assign extensibility verdicts, generate remediation, and render the requested audience view (developer/architect/governance).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "description": "Package name(s), a transport request (<SID>K<6-digit>), or object list (optionally TYPE:NAME)."
+        },
+        "edition": {
+          "type": "string",
+          "description": "S/4HANA edition: on-premise | private-cloud | public-cloud. Defaults to on-premise."
+        },
+        "depth": {
+          "type": "string",
+          "description": "Remediation depth: principle | api | code. Defaults to principle."
+        },
+        "view": {
+          "type": "string",
+          "description": "View to render: developer | architect | governance."
+        },
+        "write_report": {
+          "type": "boolean",
+          "description": "Whether to write JSON + Markdown reports to ./reports/."
+        }
+      },
+      "required": ["scope"]
+    }
+  },
+  {
+    "name": "load",
+    "description": "This tool is used to load instructions (\"skills\").",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Skill folder name or path to a specific resource within a skill (e.g. 'clean-core-classification' or 'clean-core-classification/references/clean-core-rules.md')."
+        }
+      },
+      "required": ["path"]
+    }
+  },
+  {
+    "name": "read",
+    "description": "Read ABAP object metadata for a package, transport request, or explicit object list. Returns object headers (name, type, package, responsible) without source code.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "description": "Package name (e.g. ZMY_PACKAGE), transport request (e.g. DEVK00123456), or comma-separated object list."
+        }
+      },
+      "required": ["scope"]
+    }
+  },
+  {
+    "name": "readcontent",
+    "description": "Read the full ABAP source code of a single object identified by name and type. Returns the source lines as text.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "ABAP object name (e.g. ZCL_ORDER_ENRICH)."
+        },
+        "type": {
+          "type": "string",
+          "description": "ABAP object type (e.g. CLAS, PROG, FUGR, ENHO)."
+        }
+      },
+      "required": ["name", "type"]
+    }
+  }
+]

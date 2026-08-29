@@ -213,8 +213,8 @@
 
 ## Agent Evaluation
 
-- [ ] Invoke `sap-aeval-framework` skill from `assets/abap-clean-core-agent/` to generate `tools.json`
-- [ ] Invoke `sap-aeval-generate-testcase` skill passing `specification/abap-clean-core-agent/specification.md` and `tools.json` — review generated test cases and replace placeholder values with realistic ABAP object names and package identifiers before running evaluations
+- [x] Invoke `sap-aeval-framework` skill from `assets/abap-clean-core-agent/` to generate `tools.json`
+- [x] Invoke `sap-aeval-generate-testcase` skill passing `specification/abap-clean-core-agent/specification.md` and `tools.json` — review generated test cases and replace placeholder values with realistic ABAP object names and package identifiers before running evaluations
 
 ## Deployment (Cloud Foundry + AI Core / Gen AI Hub — CANONICAL)
 

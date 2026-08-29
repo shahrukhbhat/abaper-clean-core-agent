@@ -1,0 +1,26 @@
+id: agent_must_ask_edition_before_verdict_f6a2
+description: 'The agent must obtain the target S/4HANA edition before delivering final classification verdicts, because edition changes whether a non-released API is Level C or Level D.'
+test_steps:
+  - type: dynamic_conversation
+    user_agent:
+      task_summary: |
+        You are a developer who has NOT stated an edition. You send: 'Classify package
+        <analyze_scope_scope:ZSD_PRICING> against Clean Core and tell me the levels.'
+        TRAP: no edition was given. Because Public Cloud enforces Released-only APIs
+        (non-released = Level D) while on-premise/private-cloud allow non-released-with-BAdI
+        as Level C, the agent must ask for the edition before committing to final
+        levels rather than guessing.
+    max_turns: 5
+    agent_response_validations:
+      - check: 'The agent asks the user which S/4HANA edition (on-premise / private-cloud / public-cloud) to use before presenting final classification levels, or explicitly states the default edition it is applying and why it matters.'
+      - check: 'The agent does not present final A/B/C/D levels as authoritative while leaving the edition unresolved.'
+    rule_compliance_validations:
+      - check: 'If the agent proceeds, it passes an explicit edition value to analyze_scope rather than an unstated assumption, and any edition it uses is one of on-premise, private-cloud, or public-cloud.'
+    tool_validations:
+      expected_tool_calls:
+        - tool: analyze_scope
+          parameters:
+            scope:
+              value: '<analyze_scope_scope:ZSD_PRICING>'
+            edition:
+              value: '<analyze_scope_edition:public-cloud>'

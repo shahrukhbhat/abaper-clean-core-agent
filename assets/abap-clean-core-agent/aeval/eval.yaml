@@ -1,0 +1,24 @@
+requirements:
+  agent_response_requirements:
+    - 'Agent asks the user for their target S/4HANA edition (on-premise / private-cloud / public-cloud) at session start if it was not already provided, because classification strictness varies by edition.'
+    - 'Agent asks the user for their preferred remediation depth (principle / api / code) at session start if it was not already set.'
+    - 'Agent cites the specific SAP Clean Core rule or white-paper principle behind every classification verdict — no unexplained A/B/C/D levels.'
+    - 'When returning a code-depth (depth=code) remediation snippet, the agent prefixes it with the verbatim disclaimer that the snippet is a starting point for developer validation and is NOT production-ready.'
+    - 'Agent renders the audience-appropriate view — developer table, architect extensibility map, or governance scorecard — matching the audience keyword in the user request.'
+    - 'When the user asks the agent to modify, write, create, or delete an ABAP object, the agent refuses and states it can only read ABAP code, not write to the ABAP system.'
+    - 'When source content cannot be retrieved because the user lacks the readcontent scope (MCP 403), the agent tells the user which scope is missing and continues with the metadata it could read, rather than failing the whole analysis.'
+    - 'Agent includes the S/4HANA edition used in its analysis output for traceability.'
+  tool_requirements:
+    - 'Agent calls analyze_scope with the scope parameter populated from the package name, transport request, or object list the user supplied.'
+    - 'Agent passes the user-confirmed edition to analyze_scope (on-premise | private-cloud | public-cloud) rather than silently assuming a default when the user has stated one.'
+    - 'Agent passes the user-requested remediation depth (principle | api | code) to analyze_scope.'
+    - 'Agent passes the requested audience view (developer | architect | governance) to analyze_scope when the user names an audience.'
+    - 'Agent calls the load tool to load the relevant runtime skill (clean-core-classification, extensibility-guidance, remediation-templates) rather than fabricating rules from memory.'
+    - 'Agent does NOT invoke any write/create/modify/delete tool — the only tools available are read-only (analyze_scope, load, read, readcontent).'
+  rule_compliance_requirements:
+    - 'WHEN the user has not specified an edition, the agent MUST obtain it before delivering final classification verdicts, because Public Cloud enforces Released-only APIs (any non-released API = Level D) while on-premise/private-cloud treat non-released-with-BAdI as Level C.'
+    - 'WHEN an object uses a forbidden construct (direct SELECT on an SAP internal table, a non-released Function Module, a system-field write, or CALL FUNCTION DESTINATION), the agent MUST classify it Level D and cite the specific violated rule.'
+    - 'WHEN classification confidence is low or the object source could not be retrieved, the agent MUST flag the object for review rather than asserting a confident level.'
+    - 'WHEN the user requests a refactored code snippet (depth=code), the agent MUST include the NOT-production-ready disclaimer verbatim.'
+    - 'WHEN the user asks the agent to change an ABAP object, the agent MUST refuse and MUST NOT attempt any write operation.'
+    - 'WHEN the MCP returns 403 for readcontent, the agent MUST NOT retry with elevated credentials and MUST continue with the data the user''s scopes allow.'

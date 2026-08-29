@@ -1,0 +1,29 @@
+id: e2e_transport_governance_scorecard_b2c9
+description: 'E2E Happy Path: analyze a transport request and return the governance scorecard - validates M1 through M6 with the governance audience view.'
+test_steps:
+  - type: dynamic_conversation
+    user_agent:
+      task_summary: |
+        You are a migration program governance lead. You send: 'Give me a governance
+        scorecard for transport <analyze_scope_scope:DEVK900123>. Our system is
+        private-cloud.' You do not mention remediation depth, so the agent should
+        confirm or default the depth (principle) before finalizing, and must ask for
+        depth only if not inferable. You expect an executive scorecard with a level
+        distribution and an overall risk rating.
+    max_turns: 5
+    agent_response_validations:
+      - check: 'The agent returns a governance scorecard containing a Clean Core level distribution (counts/percentages for A/B/C/D) and an overall risk rating.'
+      - check: 'The agent states the edition (private-cloud) used for the analysis.'
+    rule_compliance_validations:
+      - check: 'The agent calls analyze_scope with scope <analyze_scope_scope:DEVK900123>, edition private-cloud, and view governance.'
+      - check: 'The agent either confirms the remediation depth with the user or applies the principle default, and does not silently assume a different edition than the user gave.'
+    tool_validations:
+      expected_tool_calls:
+        - tool: analyze_scope
+          parameters:
+            scope:
+              value: '<analyze_scope_scope:DEVK900123>'
+            edition:
+              value: 'private-cloud'
+            view:
+              value: 'governance'
